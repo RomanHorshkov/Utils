@@ -20,7 +20,7 @@
  * @return Size in seconds as a `size_t` expression.
  */
 #ifndef TIME_SIZE_SECOND
-#define TIME_SIZE_SECOND(x) ((size_t)(x) * 1U)
+#    define TIME_SIZE_SECOND(x) ((size_t)(x) * 1U)
 #endif
 
 /**
@@ -31,7 +31,7 @@
  * @return Size in seconds as a `size_t` expression.
  */
 #ifndef TIME_SIZE_MINUTE_2_SECOND
-#define TIME_SIZE_MINUTE_2_SECOND(x) (TIME_SIZE_SECOND(x) * 60ULL)
+#    define TIME_SIZE_MINUTE_2_SECOND(x) (TIME_SIZE_SECOND(x) * 60ULL)
 #endif
 
 /**
@@ -42,7 +42,7 @@
  * @return Size in seconds as a `size_t` expression.
  */
 #ifndef TIME_SIZE_HOUR_2_SECOND
-#define TIME_SIZE_HOUR_2_SECOND(x) (TIME_SIZE_MINUTE_2_SECOND(x) * 60ULL)
+#    define TIME_SIZE_HOUR_2_SECOND(x) (TIME_SIZE_MINUTE_2_SECOND(x) * 60ULL)
 #endif
 
 /**
@@ -53,7 +53,7 @@
  * @return Size in seconds as a `size_t` expression.
  */
 #ifndef TIME_SIZE_DAY_2_SECOND
-#define TIME_SIZE_DAY_2_SECOND(x) (TIME_SIZE_HOUR_2_SECOND(x) * 24ULL)
+#    define TIME_SIZE_DAY_2_SECOND(x) (TIME_SIZE_HOUR_2_SECOND(x) * 24ULL)
 #endif
 
 #endif /* TIME_UNIT_MACROS_H_ */
