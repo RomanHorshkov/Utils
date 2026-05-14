@@ -1,10 +1,10 @@
 /**
  * @file string_view.h
  * @brief String view utility definitions
- * 
+ *
  * Provides a lightweight string view structure for non-owning
  * references to character data.
- * 
+ *
  * @author  Roman Horshkov <roman.horshkov@gmail.com>
  * @date    2025
  * (c) 2025
@@ -40,13 +40,13 @@ typedef struct
 /****************************************************************************
  * PUBLIC VARIABLES
  ****************************************************************************
-*/
+ */
 /* None */
 
 /****************************************************************************
  * PUBLIC FUNCTIONS DEFINITIONS
  ****************************************************************************
-*/
+ */
 /**
  * @brief Create a string view from a NUL-terminated C string
  * @param[in] z     NUL-terminated string
@@ -110,9 +110,9 @@ static inline void sv_append(sv_t* sv, const char* p, size_t n)
         sv->n += n;
     }
     /* else: non-contiguous; for now, ignore:
-       // sv->p = p;
-       // sv->n = n;
-     */
+     // sv->p = p;
+     // sv->n = n;
+   */
 }
 
 /**

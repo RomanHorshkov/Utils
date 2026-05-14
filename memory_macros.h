@@ -13,7 +13,13 @@
  * PUBLIC INCLUDES
  ****************************************************************************
  */
+
 #include <stddef.h> /* NULL, size_t */
+
+/****************************************************************************
+ * PUBLIC DEFINES
+ ****************************************************************************
+ */
 
 /**
  * @brief byte definition
@@ -23,7 +29,7 @@
  * @return Size in bytes as a `size_t` expression.
  */
 #ifndef MEMORY_SIZE_B
-#define MEMORY_SIZE_B(x) ((size_t)(x) * 1U) /* define a byte */
+#    define MEMORY_SIZE_B(x) ((size_t)(x))
 #endif
 
 /**
@@ -34,7 +40,7 @@
  * @return Size in bytes as a `size_t` expression.
  */
 #ifndef MEMORY_SIZE_KiB_2_B
-#define MEMORY_SIZE_KiB_2_B(x) (MEMORY_SIZE_B(x) * 1024ULL)
+#    define MEMORY_SIZE_KiB_2_B(x) (MEMORY_SIZE_B(x) * 1024ULL)
 #endif
 
 /**
@@ -45,7 +51,7 @@
  * @return Size in bytes as a `size_t` expression.
  */
 #ifndef MEMORY_SIZE_MiB_2_B
-#define MEMORY_SIZE_MiB_2_B(x) (MEMORY_SIZE_KiB_2_B(x) * 1024ULL)
+#    define MEMORY_SIZE_MiB_2_B(x) (MEMORY_SIZE_KiB_2_B(x) * 1024ULL)
 #endif
 
 /**
@@ -56,7 +62,7 @@
  * @return Size in bytes as a `size_t` expression.
  */
 #ifndef MEMORY_SIZE_GiB_2_B
-#define MEMORY_SIZE_GiB_2_B(x) (MEMORY_SIZE_MiB_2_B(x) * 1024ULL)
+#    define MEMORY_SIZE_GiB_2_B(x) (MEMORY_SIZE_MiB_2_B(x) * 1024ULL)
 #endif
 
 #endif /* MEMORY_UNIT_MACROS_H_ */

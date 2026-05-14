@@ -30,8 +30,13 @@
  * (c) 2025
  */
 
-#ifndef PREPROC_COMMON_H
-#define PREPROC_COMMON_H
+#ifndef PREPROCESSOR_COMMON_H
+#define PREPROCESSOR_COMMON_H
+
+/****************************************************************************
+ * PUBLIC INCLUDES
+ ****************************************************************************
+ */
 
 #include <stddef.h>
 #include <stdint.h>
@@ -44,17 +49,17 @@ extern "C"
 /****************************************************************************
  * MARK: COMPILATION FEATURES
  ****************************************************************************
-*/
+ */
 
 #if defined(__GNUC__) || defined(__clang__)
 /**
  * @def PREPROC_ALWAYS_INLINE
  * @brief Force inline attribute for GCC/Clang.
- * 
+ *
  * Applies `__attribute__((always_inline))` to static inline functions, ensuring
  * they are inlined even at low optimization levels. Used for hot-path helpers
  * where inlining is critical for performance.
- * 
+ *
  * On other compilers, falls back to plain `static inline`.
  */
 #    define PREPROC_ALWAYS_INLINE __attribute__((always_inline)) static inline
@@ -62,10 +67,10 @@ extern "C"
 /**
  * @def PREPROC_LIKELY(x)
  * @brief Branch prediction hint for likely conditions (GCC/Clang).
- * 
+ *
  * @param x Expression expected to evaluate to true in the common case.
  * @return The input expression with a branch prediction hint applied.
- * 
+ *
  * Guides the CPU branch predictor to optimize for the case where `x` is true.
  * Use in performance-critical paths where the condition is usually satisfied.
  * On other compilers, transparently returns `x` unchanged.
@@ -75,10 +80,10 @@ extern "C"
 /**
  * @def PREPROC_UNLIKELY(x)
  * @brief Branch prediction hint for unlikely conditions (GCC/Clang).
- * 
+ *
  * @param x Expression expected to evaluate to false in the common case.
  * @return The input expression with a branch prediction hint applied.
- * 
+ *
  * Guides the CPU branch predictor to optimize for the case where `x` is false.
  * Use to mark error paths, edge cases, or infrequent branches.
  * On other compilers, transparently returns `x` unchanged.
@@ -89,10 +94,11 @@ extern "C"
  * @def FALLTHROUGH
  * @brief Document an intentional fall-through between `case` labels.
  *
- * Expands to a compiler-specific attribute (for example `__attribute__((fallthrough))`)
- * that documents an intentional fall-through from one `case` to the next,
- * suppressing implicit-fallthrough warnings. If the target compiler does not
- * support the attribute, the macro should be defined empty to preserve portability.
+ * Expands to a compiler-specific attribute (for example
+ * `__attribute__((fallthrough))`) that documents an intentional fall-through
+ * from one `case` to the next, suppressing implicit-fallthrough warnings. If
+ * the target compiler does not support the attribute, the macro should be
+ * defined empty to preserve portability.
  *
  * Usage example:
  * @code
@@ -104,10 +110,10 @@ extern "C"
  * }
  * @endcode
  */
-#    define FALLTHROUGH        __attribute__((fallthrough))
+#    define FALLTHROUGH           __attribute__((fallthrough))
 
 /**
- * 
+ *
  */
 #    define CT_REQUIRE_CONST_AND_LE8(L) \
         (0u * (unsigned)sizeof(char[(__builtin_constant_p(L) && ((L) <= 8u)) ? 1 : -1]))
@@ -116,33 +122,33 @@ extern "C"
 /**
  * @def PREPROC_ALWAYS_INLINE
  * @brief Force inline attribute (portable fallback).
- * 
+ *
  * On non-GCC/Clang compilers, this is simply `static inline`. The actual
  * inlining decision is left to the compiler.
  */
-#    define PREPROC_ALWAYS_INLINE          static inline
+#    define PREPROC_ALWAYS_INLINE       static inline
 
 /**
  * @def PREPROC_LIKELY(x)
  * @brief Branch prediction hint (no-op fallback).
- * 
+ *
  * @param x Expression to evaluate.
  * @return The input expression unchanged.
- * 
+ *
  * On compilers without `__builtin_expect`, this is a transparent pass-through.
  */
-#    define PREPROC_LIKELY(x)              (x)
+#    define PREPROC_LIKELY(x)           (x)
 
 /**
  * @def PREPROC_UNLIKELY(x)
  * @brief Branch prediction hint (no-op fallback).
- * 
+ *
  * @param x Expression to evaluate.
  * @return The input expression unchanged.
- * 
+ *
  * On compilers without `__builtin_expect`, this is a transparent pass-through.
  */
-#    define PREPROC_UNLIKELY(x)            (x)
+#    define PREPROC_UNLIKELY(x)         (x)
 
 #    define FALLTHROUGH                 /* fallthrough */
 
@@ -154,7 +160,7 @@ extern "C"
 /****************************************************************************
  * MARK: HELPERS
  ****************************************************************************
-*/
+ */
 
 /**
  * @def CAT(a, b)
@@ -189,7 +195,6 @@ extern "C"
  */
 #define ENUM_ID(_prefix, _suffix)            CAT(_prefix, _suffix)
 
-
 #define MAX_INT(a, b)                        (((a) > (b)) ? (a) : (b))
 
 /**
@@ -212,4 +217,4 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-#endif /* PREPROC_COMMON_H */
+#endif /* PREPROCESSOR_COMMON_H */
