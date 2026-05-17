@@ -337,7 +337,7 @@ int fs_dir_create_at(const fs_dir_t* parent,
     {
         /* Verify the freshly-created directory has the explicit requested mode. */
         fs_expect_t created_expect = fs_expect_make(create_mode, FS_EXPECT_ANY_UID, FS_EXPECT_ANY_GID);
-        int         rc             = fs_dir_verify(&(fs_dir_t){.fd = fd}, &created_expect);
+        rc = fs_dir_verify(&(fs_dir_t){.fd = fd}, &created_expect);
         if(rc != 0)
         {
             /* Verification failure means we must not leak the temporary fd. */
