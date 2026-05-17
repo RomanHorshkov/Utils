@@ -4,6 +4,10 @@
  *
  * This header exposes a dirfd-based API for code that wants explicit control
  * over filesystem traversal, verification, ownership, and durability.
+ * 
+ * @author  Roman Horshkov <github.com/RomanHorshkov>
+ * @date    2026
+ * (c) 2026
  */
 
 #ifndef FSUTIL_H
