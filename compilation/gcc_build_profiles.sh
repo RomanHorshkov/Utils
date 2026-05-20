@@ -125,7 +125,7 @@ _print_array() {
 # =============================================================================
 #
 # CFLAGS_BASE
-# -------------
+# -----------
 # Flags that define the project's baseline compilation contract.
 #
 # -std=c11
@@ -185,9 +185,9 @@ CFLAGS_BASE=(
 # =============================================================================
 #
 # CFLAGS_WARN_BASE
-# ---------
-# These are warnings that are almost always sane for a serious C codebase.
-# They are not perfectly silent, but they catch real mistakes frequently.
+# ----------------
+# These warnings are broadly appropriate for a disciplined C codebase. They are
+# not guaranteed to be silent, but they catch real defects frequently.
 #
 # Runtime cost of all warning flags: none.
 # Binary-size cost of all warning flags: none.
@@ -210,9 +210,9 @@ CFLAGS_WARN_BASE=(
   #   Warn when using code that violates the selected ISO C standard.
   #   With -std=c11, this helps detect non-standard constructs.
   #
-  #   Important: because this file also defines _GNU_SOURCE, system headers and
-  #   the code may intentionally use GNU/POSIX APIs. That is fine. This warning
-  #   mainly helps keep the code language syntax honest.
+  #   Important: if the project enables GNU or POSIX feature-test macros,
+  #   system headers and project code may intentionally use non-ISO APIs. That
+  #   is fine. This warning mainly helps keep the language syntax honest.
   -Wpedantic
 
   # -Wformat=2
@@ -228,7 +228,7 @@ CFLAGS_WARN_BASE=(
   #   or type depending on context.
   #
   #   Value: excellent for maintainability.
-  #   Cost: no runtime cost;
+  #   Cost: no runtime cost.
   -Wshadow
 
   # -Wundef
@@ -288,7 +288,7 @@ CFLAGS_WARN_BASE=(
   #   Value: excellent for serialization, binary formats, UUIDs, file sizes,
   #   indexes, wire protocols, endian code, and embedded targets.
   #
-  #   Pain: high. Always need explicit casts at intentional boundaries.
+  #   Adoption cost: high. Intentional boundaries often require explicit casts.
   -Wconversion
 
   # -Wduplicated-cond
@@ -359,9 +359,10 @@ CFLAGS_WARN_BASE=(
 # =============================================================================
 #
 # CFLAGS_WARN_STRICT
-# -----------
-# These warnings are very valuable, but they force discipline.
-# May require explicit casts, better type choices, and better API design.
+# ------------------
+# These warnings are highly valuable, but they require discipline. Adopting
+# them often means introducing explicit casts, revisiting type choices, and
+# tightening API design.
 #
 CFLAGS_WARN_STRICT=(
   # -Wdouble-promotion
@@ -465,10 +466,10 @@ CFLAGS_WARN_STRICT=(
 # =============================================================================
 #
 # CFLAGS_WARN_PARANOID
-# -------------
-# These are useful for serious test builds, but more compiler-version-sensitive
-# and sometimes noisy.
-# They are intentionally kept separate.
+# --------------------
+# These diagnostics are useful in rigorous validation builds, but they are more
+# sensitive to compiler-version differences and can be noisy. They are kept
+# separate intentionally.
 #
 CFLAGS_WARN_PARANOID=(
   # -Warray-bounds=2
@@ -559,8 +560,8 @@ CFLAGS_WARN_PARANOID=(
 # Static analyzer group
 # =============================================================================
 #
-# GCC_ANALYZER_FLAGS
-# ------------------
+# CFLAGS_GCC_ANALYZER
+# -------------------
 # -fanalyzer enables GCC's path-sensitive static analyzer.
 #
 # It tries to find problems such as:
@@ -576,9 +577,10 @@ CFLAGS_WARN_PARANOID=(
 # Runtime cost: none.
 # Binary-size cost: none.
 # False positives: possible.
-# Recommended: use in the test/audit build, not necessarily on every edit.
+# Recommended usage: reserve this for deeper validation runs rather than every
+# incremental rebuild.
 #
-GCC_ANALYZER_FLAGS=(
+CFLAGS_GCC_ANALYZER=(
   -fanalyzer
 )
 
@@ -587,17 +589,16 @@ GCC_ANALYZER_FLAGS=(
 # Sanitizer groups
 # =============================================================================
 #
-# Sanitizers insert runtime instrumentation into the binary.
-# They are among the best tools available for C testing,
-# but they are NOT for release.
+# Sanitizers insert runtime instrumentation into the binary. They are among the
+# most effective tools available for C testing, but they are not release flags.
 #
 # Important sanitizer rule
 # ------------------------
-# AddressSanitizer and ThreadSanitizer should not be mixed in the same build.
-# Use separate profiles.
+# AddressSanitizer and ThreadSanitizer should not be combined in the same
+# build. Use separate profiles.
 #
-# This file's main "test" profile uses ASan + UBSan + LSan.
-# If you need TSAN, use CFLAGS_TSAN / LDFLAGS_TSAN below.
+# This file's main test profile uses ASan, UBSan, and LSan. If thread analysis
+# is required, use CFLAGS_TSAN / LDFLAGS_TSAN below.
 #
 CFLAGS_SANITIZER_ADDRESS=(
   # -fsanitize=address
@@ -654,7 +655,7 @@ CFLAGS_SANITIZER_THREAD=(
 # profiles by default, and should only be removed in the extreme profile when
 # lower overhead is explicitly more important than defensive hardening.
 #
-HARDENING_FLAGS=(
+CFLAGS_HARDENING_FLAGS=(
   # -fstack-protector-strong
   #   Adds stack canary checks to functions that are more likely to suffer stack
   #   smashing: local arrays, address-taken locals, etc.
@@ -750,7 +751,7 @@ CFLAGS_OPT_RELEASE=(
   #   Runtime: often fastest, but not always. Sometimes -O2 is smaller/faster.
   #   Compile time: higher than -O2.
   #   Binary size: may increase due to inlining/unrolling.
-#   Risk: can make latent undefined behavior surface more aggressively.
+  #   Risk: can make latent undefined behavior surface more aggressively.
   -O3
 
   # -DNDEBUG
@@ -910,8 +911,8 @@ CFLAGS_TEST=(
   "${CFLAGS_OPT_TEST[@]}"
   "${CFLAGS_DEBUG[@]}"
   "${CFLAGS_SANITIZER_ADDRESS[@]}"
-  "${GCC_ANALYZER_FLAGS[@]}"
-  "${HARDENING_FLAGS[@]}"
+  "${CFLAGS_GCC_ANALYZER[@]}"
+  "${CFLAGS_HARDENING_FLAGS[@]}"
 )
 
 LDFLAGS_TEST=(
@@ -940,7 +941,7 @@ CFLAGS_RELEASE=(
   "${CFLAGS_WARN_BASE[@]}"
   "${CFLAGS_WARN_STRICT[@]}"
   "${CFLAGS_OPT_RELEASE[@]}"
-  "${HARDENING_FLAGS[@]}"
+  "${CFLAGS_HARDENING_FLAGS[@]}"
 )
 
 LDFLAGS_RELEASE=(
