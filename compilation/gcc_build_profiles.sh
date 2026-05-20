@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # =============================================================================
+# MARK: File Overview
 # gcc_build_profiles.sh
 # =============================================================================
 #
 # Purpose
 # -------
-# Repo-ready GCC flag profiles for a serious C project.
+# Repository-ready GCC build profiles for a production-quality C project.
 #
-# The file is intentionally verbose. It is both:
+# This file is intentionally detailed. It serves two roles:
 #
-#   1. a reusable Bash fragment containing arrays of GCC flags; and
-#   2. documentation explaining why each flag exists, what it costs, and where
-#      it should or should not be used.
+#   1. a reusable Bash fragment that exposes GCC flag arrays; and
+#   2. a reference document describing why each flag is present, what trade-offs
+#      it introduces, and where it should or should not be used.
 #
 # Intended usage
 # --------------
@@ -22,6 +23,7 @@
 #
 # Then select one profile:
 #
+#   gcc "${CFLAGS_DEBUG[@]}"   src/*.c -o app_debug   "${LDFLAGS_DEBUG[@]}"
 #   gcc "${CFLAGS_TEST[@]}"    src/*.c -o app_test    "${LDFLAGS_TEST[@]}"
 #   gcc "${CFLAGS_RELEASE[@]}" src/*.c -o app_release "${LDFLAGS_RELEASE[@]}"
 #   gcc "${CFLAGS_EXTREME[@]}" src/*.c -o app_extreme "${LDFLAGS_EXTREME[@]}"
@@ -36,62 +38,78 @@
 #   ./gcc_build_profiles.sh explain
 #   ./gcc_build_profiles.sh print-cflags release
 #
-# Philosophy
-# ----------
-# There are three different ideas that people often mix together:
+# Design Principles
+# -----------------
+# Build configuration discussions often blur together concerns that should be
+# evaluated independently. This file keeps them separate:
 #
 #   1. warnings
 #      Compile-time diagnostics. They do not make the final binary slower.
-#      They can make compilation noisier. They may reject ugly code if -Werror
-#      is used, but this file deliberately does NOT use -Werror.
+#      They can increase build noise and, if paired with -Werror, can make the
+#      build more brittle across compiler versions. This file deliberately does
+#      not enable -Werror by default.
 #
 #   2. instrumentation / hardening
-#      Runtime checks inserted into the binary. Examples: sanitizers, stack
-#      protectors, _FORTIFY_SOURCE. These can make the binary larger/slower.
+#      Runtime checks or safety mechanisms inserted into the generated binary.
+#      Examples include sanitizers, stack protectors, and _FORTIFY_SOURCE.
+#      These may increase runtime cost and binary size.
 #
 #   3. optimization
-#      Code-generation strategy. Examples: -O1, -O2, -O3, -flto,
-#      -march=native. These affect runtime speed, binary size, debug quality,
-#      and sometimes the visibility of undefined behavior.
+#      Code-generation policy. Examples include -O1, -O2, -O3, -flto, and
+#      -march=native. These affect runtime performance, binary size, debugging
+#      quality, and sometimes whether latent undefined behavior becomes visible.
 #
-# The three build profiles below separate these ideas:
+# The profiles below keep those concerns explicit:
+#
+#   debug
+#       GDB-oriented development profile. Prioritizes inspectability and
+#       predictable stepping behavior.
 #
 #   test
-#       Maximum practical diagnostics and runtime checking. Heavy. Slow.
-#       Use before trusting the code.
+#       High-diagnostic validation profile with extensive warnings, runtime
+#       checks, and debugging support.
 #
 #   release
-#       Fast optimized build with sane hardening. This is the default serious
-#       release profile for software that should be fast but not reckless.
+#       Optimized production profile with sensible hardening. This is the
+#       default release configuration for software that must be fast without
+#       abandoning baseline defensive measures.
 #
 #   extreme
-#       Maximum-speed local-machine build. This intentionally removes some
-#       safety/debug features. It is for benchmarks and controlled deployment,
-#       not for portable distribution.
+#       Maximum-performance local-machine profile. It intentionally removes some
+#       safety and debugging features and is intended for benchmarking or tightly
+#       controlled deployment, not for general distribution.
+#
+#   tsan
+#       Optional dedicated ThreadSanitizer profile for concurrency analysis.
 #
 # Recommended workflow
 # --------------------
 #
-#   1. Build and run tests with: test
-#   2. Build and run tests with: release
-#   3. Build and run benchmarks with: release
-#   4. Build and run benchmarks with: extreme, only if you really want to chase
-#      the last few percent.
+#   1. Develop with: debug
+#   2. Validate with: test
+#   3. Re-run the same tests with: release
+#   4. Benchmark with: release
+#   5. Use: extreme only when there is a concrete need to pursue the final
+#      increment of performance
+#   6. Use: tsan when auditing concurrent code
 #
-# Important warning
-# -----------------
-# Passing the test build does NOT mathematically prove that the release or
-# extreme build is correct. Optimized builds can expose undefined behavior that
-# sanitizer/debug builds did not trigger. Therefore run the same tests under the
-# optimized profiles too.
+# Important Note
+# --------------
+# Passing the test profile does not prove that the release or extreme profiles
+# are correct. Optimized builds can expose undefined behavior that did not
+# manifest under sanitizer-heavy or debug-oriented builds. The same test suite
+# should therefore be exercised under the optimized profiles as well.
 #
-# Compatibility note
+# Compatibility Note
 # ------------------
-# This file is written for GCC on Linux/glibc. Some flags are GCC-specific and
-# may not exist in Clang, TinyCC, embedded cross-compilers, or old GCC versions.
-# If you target multiple compilers, add a small feature-detection layer.
+# This file targets GCC on Linux/glibc. Several flags are GCC-specific and may
+# be unavailable in Clang, TinyCC, embedded cross-compilers, or older GCC
+# releases. If the project must support multiple toolchains, add a small
+# feature-detection or compatibility layer rather than weakening the policy
+# globally.
 #
 # =============================================================================
+# MARK: Helpers
 # Usage helper
 # =============================================================================
 
@@ -102,12 +120,13 @@ _print_array() {
 }
 
 # =============================================================================
+# MARK: Language And Platform Policy
 # Language / platform policy
 # =============================================================================
 #
-# CFLAGS_STD_MACROS_INCLUDE
+# CFLAGS_BASE
 # -------------
-# Flags that define the basic compilation contract of the project.
+# Flags that define the project's baseline compilation contract.
 #
 # -std=c11
 #     Compile as ISO C11.
@@ -136,17 +155,32 @@ _print_array() {
 #       -std=gnu11
 #
 # -I.
-#     Add current directory as an include root. For serious projects, you may
-#     prefer -Iinclude or -Iapp/include instead of -I.
+#     Add the current directory as an include root. In larger projects, a more
+#     explicit include layout such as -Iinclude or -Iapp/include is often
+#     preferable.
 #
-CFLAGS_STD_MACROS_INCLUDE=(
+
+CFLAGS_LANGUAGE=(
   -std=c11
+)
+
+CPPFLAGS_FEATURES=(
   # -D_GNU_SOURCE
   -D_POSIX_C_SOURCE=200809L
+)
+
+CPPFLAGS_INCLUDES=(
   -I.
 )
 
+CFLAGS_BASE=(
+  "${CFLAGS_LANGUAGE[@]}"
+  "${CPPFLAGS_FEATURES[@]}"
+  "${CPPFLAGS_INCLUDES[@]}"
+)
+
 # =============================================================================
+# MARK: Baseline Warnings
 # Warning group 1: baseline warnings
 # =============================================================================
 #
@@ -320,6 +354,7 @@ CFLAGS_WARN_BASE=(
 )
 
 # =============================================================================
+# MARK: Strict Warnings
 # Warning group 2: strict value/type/memory warnings
 # =============================================================================
 #
@@ -425,6 +460,7 @@ CFLAGS_WARN_STRICT=(
 )
 
 # =============================================================================
+# MARK: Paranoid Warnings
 # Warning group 3: paranoid / GCC-specific diagnostics
 # =============================================================================
 #
@@ -519,6 +555,7 @@ CFLAGS_WARN_PARANOID=(
 )
 
 # =============================================================================
+# MARK: GCC Analyzer
 # Static analyzer group
 # =============================================================================
 #
@@ -546,11 +583,13 @@ GCC_ANALYZER_FLAGS=(
 )
 
 # =============================================================================
+# MARK: Sanitizers
 # Sanitizer groups
 # =============================================================================
 #
-# Sanitizers insert runtime instrumentation into the binary. They are among the
-# best tools available for C testing, but they are NOT release flags.
+# Sanitizers insert runtime instrumentation into the binary.
+# They are among the best tools available for C testing,
+# but they are NOT for release.
 #
 # Important sanitizer rule
 # ------------------------
@@ -560,7 +599,7 @@ GCC_ANALYZER_FLAGS=(
 # This file's main "test" profile uses ASan + UBSan + LSan.
 # If you need TSAN, use CFLAGS_TSAN / LDFLAGS_TSAN below.
 #
-SANITIZER_ADDRESS_UNDEFINED_LEAK=(
+CFLAGS_SANITIZER_ADDRESS=(
   # -fsanitize=address
   #   Detects many memory bugs:
   #       heap buffer overflow
@@ -595,7 +634,7 @@ SANITIZER_ADDRESS_UNDEFINED_LEAK=(
   -fsanitize=leak
 )
 
-SANITIZER_THREAD=(
+CFLAGS_SANITIZER_THREAD=(
   # -fsanitize=thread
   #   Detects data races and some threading misuse.
   #
@@ -607,11 +646,13 @@ SANITIZER_THREAD=(
 )
 
 # =============================================================================
+# MARK: Hardening
 # Instrumentation / hardening flags
 # =============================================================================
 #
-# These affect generated code. Use in test and release-safe profiles. Remove in
-# extreme only if you deliberately want maximum speed/minimum overhead.
+# These flags alter generated code. They belong in validation and production
+# profiles by default, and should only be removed in the extreme profile when
+# lower overhead is explicitly more important than defensive hardening.
 #
 HARDENING_FLAGS=(
   # -fstack-protector-strong
@@ -650,10 +691,11 @@ HARDENING_FLAGS=(
 )
 
 # =============================================================================
+# MARK: Debuggability
 # Debuggability flags
 # =============================================================================
 #
-DEBUGGABILITY_FLAGS=(
+CFLAGS_DEBUG=(
   # -g3
   #   Emit maximum debug information, including macro definitions.
   #
@@ -671,10 +713,11 @@ DEBUGGABILITY_FLAGS=(
 )
 
 # =============================================================================
+# MARK: Optimization Groups
 # Optimization groups
 # =============================================================================
 #
-OPT_TEST=(
+CFLAGS_OPT_TEST=(
   # -O1
   #   Light optimization.
   #
@@ -688,7 +731,7 @@ OPT_TEST=(
   -O1
 )
 
-OPT_DEBUG=(
+CFLAGS_OPT_DEBUG=(
   # -Og
   #   Optimize for debugging experience.
   #
@@ -697,7 +740,7 @@ OPT_DEBUG=(
   -Og
 )
 
-OPT_RELEASE=(
+CFLAGS_OPT_RELEASE=(
   # -O3
   #   Aggressive optimization.
   #
@@ -707,7 +750,7 @@ OPT_RELEASE=(
   #   Runtime: often fastest, but not always. Sometimes -O2 is smaller/faster.
   #   Compile time: higher than -O2.
   #   Binary size: may increase due to inlining/unrolling.
-  #   Risk: exposes undefined behavior more brutally.
+#   Risk: can make latent undefined behavior surface more aggressively.
   -O3
 
   # -DNDEBUG
@@ -732,7 +775,7 @@ OPT_RELEASE=(
   -flto
 )
 
-OPT_EXTREME=(
+CFLAGS_OPT_EXTREME=(
   # -O3
   #   Same aggressive optimization as release.
   -O3
@@ -781,17 +824,19 @@ OPT_EXTREME=(
 )
 
 # =============================================================================
+# MARK: Ofast Policy
 # Optional dangerous optimization: -Ofast
 # =============================================================================
 #
-# This file deliberately does NOT use -Ofast by default.
+# This file deliberately does not use -Ofast by default.
 #
 # -Ofast enables -O3 plus optimizations that may violate strict standards
 # semantics, especially floating-point behavior. It may imply flags such as
 # -ffast-math depending on compiler version.
 #
-# For robotics, simulation, filters, control, orbital math, geometry, and any
-# code where NaN/Inf/rounding/IEEE behavior matters: do not casually use -Ofast.
+# For robotics, simulation, filtering, control, orbital math, geometry, and any
+# code where NaN/Inf handling, rounding, or IEEE semantics matter, -Ofast
+# should not be adopted casually.
 #
 # For pure integer-heavy systems code, it may be worth benchmarking, but still
 # test carefully.
@@ -801,76 +846,87 @@ OPT_EXTREME=(
 #
 
 # =============================================================================
+# MARK: Build Profiles
 # Build profiles
 # =============================================================================
 
+# MARK: Debug Profile
+# DEBUG PROFILE
+# -------------
+# GDB-oriented development profile.
+#
+# Use for:
+#   - day-to-day development;
+#   - interactive debugging;
+#   - stepping through control flow;
+#   - investigation of logic issues where minimal optimization helps.
+#
+# Properties:
+#   Compile time: low to medium.
+#   Runtime speed: moderate.
+#   Memory usage: normal.
+#   Debuggability: excellent.
+#   Release suitability: not suitable.
+#
+# Not part of the main validation/release path, but extremely useful in
+# practice.
+#
+CFLAGS_DEBUG=(
+  "${CFLAGS_BASE[@]}"
+  "${CFLAGS_WARN_BASE[@]}"
+  "${CFLAGS_WARN_STRICT[@]}"
+  "${CFLAGS_OPT_DEBUG[@]}"
+  "${CFLAGS_DEBUG[@]}"
+  -fno-inline
+  -fstack-protector-strong
+)
+
+LDFLAGS_DEBUG=()
+
+# MARK: Test Profile
 # TEST PROFILE
 # ------------
-# Maximum practical diagnostics.
+# High-diagnostic validation profile.
 #
 # Use for:
 #   - unit tests;
 #   - fuzz tests;
 #   - integration tests;
-#   - filesystem/path/database stress tests;
-#   - pre-release bug hunting.
+#   - filesystem, path, and database stress tests;
+#   - pre-release defect hunting.
 #
 # Properties:
 #   Compile time: high.
 #   Runtime speed: slow.
 #   Memory usage: high.
 #   Debuggability: good.
-#   Release suitability: no.
+#   Release suitability: not suitable.
 #
 CFLAGS_TEST=(
-  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
+  "${CFLAGS_BASE[@]}"
   "${CFLAGS_WARN_BASE[@]}"
   "${CFLAGS_WARN_STRICT[@]}"
   "${CFLAGS_WARN_PARANOID[@]}"
+  "${CFLAGS_OPT_TEST[@]}"
+  "${CFLAGS_DEBUG[@]}"
+  "${CFLAGS_SANITIZER_ADDRESS[@]}"
   "${GCC_ANALYZER_FLAGS[@]}"
-  "${OPT_TEST[@]}"
-  "${DEBUGGABILITY_FLAGS[@]}"
-  "${SANITIZER_ADDRESS_UNDEFINED_LEAK[@]}"
   "${HARDENING_FLAGS[@]}"
 )
 
 LDFLAGS_TEST=(
-  "${SANITIZER_ADDRESS_UNDEFINED_LEAK[@]}"
+  "${CFLAGS_SANITIZER_ADDRESS[@]}"
 )
 
-# TSAN PROFILE
-# ------------
-# Separate thread-sanitizer profile. Use this when auditing concurrent code.
-#
-# Properties:
-#   Compile time: high.
-#   Runtime speed: very slow.
-#   Memory usage: very high.
-#   Release suitability: no.
-#
-CFLAGS_TSAN=(
-  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
-  "${CFLAGS_WARN_BASE[@]}"
-  "${CFLAGS_WARN_STRICT[@]}"
-  "${CFLAGS_WARN_PARANOID[@]}"
-  "${OPT_TEST[@]}"
-  "${DEBUGGABILITY_FLAGS[@]}"
-  "${SANITIZER_THREAD[@]}"
-  -fno-common
-)
-
-LDFLAGS_TSAN=(
-  "${SANITIZER_THREAD[@]}"
-)
-
+# MARK: Release Profile
 # RELEASE PROFILE
 # ---------------
-# Fast optimized build with sane hardening.
+# Optimized production profile with baseline hardening.
 #
 # Use for:
-#   - normal release;
-#   - realistic performance testing;
-#   - deployed binaries where safety still matters.
+#   - standard release builds;
+#   - representative performance testing;
+#   - deployed binaries where baseline hardening still matters.
 #
 # Properties:
 #   Compile time: medium/high because of -O3 and -flto.
@@ -880,10 +936,10 @@ LDFLAGS_TSAN=(
 #   Safety: still keeps stack protector and fortify.
 #
 CFLAGS_RELEASE=(
-  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
+  "${CFLAGS_BASE[@]}"
   "${CFLAGS_WARN_BASE[@]}"
   "${CFLAGS_WARN_STRICT[@]}"
-  "${OPT_RELEASE[@]}"
+  "${CFLAGS_OPT_RELEASE[@]}"
   "${HARDENING_FLAGS[@]}"
 )
 
@@ -891,9 +947,10 @@ LDFLAGS_RELEASE=(
   -flto
 )
 
+# MARK: Extreme Profile
 # EXTREME PROFILE
 # ---------------
-# Maximum-speed local-machine build.
+# Maximum-performance local-machine profile.
 #
 # Use for:
 #   - benchmark experiments;
@@ -909,46 +966,60 @@ LDFLAGS_RELEASE=(
 #   Portability: low because of -march=native.
 #   Safety/hardening: intentionally reduced.
 #
-# This is the "fastest in the world, fuck it" profile, but do not confuse it
-# with the safest release profile.
+# This profile exists for narrowly scoped performance work. It should not be
+# confused with the default release configuration.
 #
 CFLAGS_EXTREME=(
-  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
+  "${CFLAGS_BASE[@]}"
 
   # Keep baseline warnings because they have no runtime cost.
   # Remove even these only if a third-party dependency makes your build noisy.
   "${CFLAGS_WARN_BASE[@]}"
 
-  "${OPT_EXTREME[@]}"
+  "${CFLAGS_OPT_EXTREME[@]}"
 )
 
 LDFLAGS_EXTREME=(
   -flto
 )
 
-# DEBUG PROFILE
-# -------------
-# Not part of the requested test/release/extreme trio, but useful in practice.
+# MARK: TSAN Profile
+# TSAN PROFILE
+# ------------
+# Optional dedicated ThreadSanitizer profile.
 #
-# Use when you want easy GDB stepping rather than maximum bug detection.
+# Use for:
+#   - auditing concurrent code;
+#   - race detection;
+#   - validation of thread coordination paths.
 #
-CFLAGS_DEBUG=(
-  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
+# Properties:
+#   Compile time: high.
+#   Runtime speed: very slow.
+#   Memory usage: very high.
+#   Release suitability: not suitable.
+#
+CFLAGS_TSAN=(
+  "${CFLAGS_BASE[@]}"
   "${CFLAGS_WARN_BASE[@]}"
   "${CFLAGS_WARN_STRICT[@]}"
-  "${OPT_DEBUG[@]}"
-  "${DEBUGGABILITY_FLAGS[@]}"
-  -fno-inline
-  -fstack-protector-strong
+  "${CFLAGS_WARN_PARANOID[@]}"
+  "${CFLAGS_OPT_TEST[@]}"
+  "${CFLAGS_DEBUG[@]}"
+  "${CFLAGS_SANITIZER_THREAD[@]}"
+  -fno-common
 )
 
-LDFLAGS_DEBUG=()
+LDFLAGS_TSAN=(
+  "${CFLAGS_SANITIZER_THREAD[@]}"
+)
 
 # =============================================================================
+# MARK: Cost Summary
 # Build-time / runtime cost summary
 # =============================================================================
 #
-# Rough qualitative costs:
+# Approximate qualitative cost summary:
 #
 #   warnings only
 #       Compile time: low to medium
@@ -1003,16 +1074,18 @@ LDFLAGS_DEBUG=()
 #       Portability: bad outside the build machine class
 #
 # =============================================================================
+# MARK: Build Policy
 # Suggested make/build-script policy
 # =============================================================================
 #
-# Suggested default:
+# Suggested default policy:
 #
 #   during development:
-#       debug or test
+#       debug
 #
 #   before merging:
-#       test + tsan if threaded + release
+#       test + release
+#       tsan if the code is threaded
 #
 #   before performance claims:
 #       release benchmark
@@ -1024,11 +1097,12 @@ LDFLAGS_DEBUG=()
 #       release
 #
 # Optional CI strictness:
-#   Add -Werror in CI only after the warning set is stable.
-#   Do not put -Werror into this file by default; it makes compiler upgrades
-#   and third-party headers unnecessarily painful.
+#   Add -Werror in CI only after the warning set has proven stable.
+#   Do not enable -Werror in this file by default; doing so makes compiler
+#   upgrades and third-party headers unnecessarily painful.
 #
 # =============================================================================
+# MARK: CLI
 # Command-line interface
 # =============================================================================
 
@@ -1036,25 +1110,28 @@ _explain() {
     cat <<'TXT'
 Available profiles:
 
-  test
-      Heavy diagnostics: all warning groups, GCC static analyzer,
-      ASan + UBSan + LSan, debug info, frame pointers, hardening.
+  debug
+      GDB-oriented profile: -Og, -g3, frame pointers, and no forced inlining.
 
-  tsan
-      ThreadSanitizer profile. Use separately from address sanitizer.
+  test
+      High-diagnostic validation profile: warning groups, GCC static analyzer,
+      ASan + UBSan + LSan, debug information, frame pointers, and hardening.
 
   release
-      Normal serious optimized release: -O3, -flto, -DNDEBUG,
-      warnings, stack protector, fortify.
+      Optimized production profile: -O3, -flto, -DNDEBUG,
+      warnings, stack protector, and fortify.
 
   extreme
-      Fastest local-machine profile: -O3, -flto, -march=native,
-      no frame pointer, no stack protector, no fortify.
+      Maximum-performance local-machine profile: -O3, -flto, -march=native,
+      no frame pointer, no stack protector, and no fortify.
 
-  debug
-      GDB-friendly profile: -Og, -g3, frame pointers, no forced inlining.
+  tsan
+      Optional ThreadSanitizer profile. Use separately from AddressSanitizer.
 
 Examples:
+
+  gcc $(./gcc_build_profiles.sh print-cflags debug) src/*.c -o app_debug \
+      $(./gcc_build_profiles.sh print-ldflags debug)
 
   gcc $(./gcc_build_profiles.sh print-cflags test) src/*.c -o app_test \
       $(./gcc_build_profiles.sh print-ldflags test)
@@ -1063,17 +1140,17 @@ Examples:
       $(./gcc_build_profiles.sh print-ldflags release)
 
   source ./gcc_build_profiles.sh
-  gcc "${CFLAGS_TEST[@]}" src/*.c -o app_test "${LDFLAGS_TEST[@]}"
+  gcc "${CFLAGS_DEBUG[@]}" src/*.c -o app_debug "${LDFLAGS_DEBUG[@]}"
 TXT
 }
 
 _profile_to_array_name() {
     case "$1" in
+        debug)   printf 'CFLAGS_DEBUG\n' ;;
         test)    printf 'CFLAGS_TEST\n' ;;
-        tsan)    printf 'CFLAGS_TSAN\n' ;;
         release) printf 'CFLAGS_RELEASE\n' ;;
         extreme) printf 'CFLAGS_EXTREME\n' ;;
-        debug)   printf 'CFLAGS_DEBUG\n' ;;
+        tsan)    printf 'CFLAGS_TSAN\n' ;;
         *)
             printf 'unknown profile: %s\n' "$1" >&2
             return 1
@@ -1083,11 +1160,11 @@ _profile_to_array_name() {
 
 _profile_to_ldarray_name() {
     case "$1" in
+        debug)   printf 'LDFLAGS_DEBUG\n' ;;
         test)    printf 'LDFLAGS_TEST\n' ;;
-        tsan)    printf 'LDFLAGS_TSAN\n' ;;
         release) printf 'LDFLAGS_RELEASE\n' ;;
         extreme) printf 'LDFLAGS_EXTREME\n' ;;
-        debug)   printf 'LDFLAGS_DEBUG\n' ;;
+        tsan)    printf 'LDFLAGS_TSAN\n' ;;
         *)
             printf 'unknown profile: %s\n' "$1" >&2
             return 1
@@ -1107,7 +1184,7 @@ _main() {
 
         print-cflags)
             if [[ -z "$profile" ]]; then
-                printf 'usage: %s print-cflags {test|tsan|release|extreme|debug}\n' "$0" >&2
+                printf 'usage: %s print-cflags {debug|test|release|extreme|tsan}\n' "$0" >&2
                 return 2
             fi
             arr_name="$(_profile_to_array_name "$profile")" || return 2
@@ -1116,7 +1193,7 @@ _main() {
 
         print-ldflags)
             if [[ -z "$profile" ]]; then
-                printf 'usage: %s print-ldflags {test|tsan|release|extreme|debug}\n' "$0" >&2
+                printf 'usage: %s print-ldflags {debug|test|release|extreme|tsan}\n' "$0" >&2
                 return 2
             fi
             arr_name="$(_profile_to_ldarray_name "$profile")" || return 2
