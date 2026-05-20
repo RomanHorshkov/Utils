@@ -33,7 +33,7 @@ extern "C"
  */
 
 // ------------------------ Capability-oriented API --------------------------
-/*
+/**
  * OVERVIEW
  *
  * This API is intentionally built around directory file descriptors ("dirfds")
