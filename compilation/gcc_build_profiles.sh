@@ -75,7 +75,8 @@
 #   1. Build and run tests with: test
 #   2. Build and run tests with: release
 #   3. Build and run benchmarks with: release
-#   4. Build and run benchmarks with: extreme, if you really want to have fun
+#   4. Build and run benchmarks with: extreme, only if you really want to chase
+#      the last few percent.
 #
 # Important warning
 # -----------------
@@ -88,7 +89,7 @@
 # ------------------
 # This file is written for GCC on Linux/glibc. Some flags are GCC-specific and
 # may not exist in Clang, TinyCC, embedded cross-compilers, or old GCC versions.
-# If targeting multiple compilers, add a small feature-detection layer.
+# If you target multiple compilers, add a small feature-detection layer.
 #
 # =============================================================================
 # Usage helper
@@ -104,7 +105,7 @@ _print_array() {
 # Language / platform policy
 # =============================================================================
 #
-# COMMON_CFLAGS
+# CFLAGS_STD_MACROS_INCLUDE
 # -------------
 # Flags that define the basic compilation contract of the project.
 #
@@ -135,13 +136,13 @@ _print_array() {
 #       -std=gnu11
 #
 # -I.
-#     Add current directory as an include root. For serious projects, may
-#     prefer -Iinclude or -Iapp/include.
+#     Add current directory as an include root. For serious projects, you may
+#     prefer -Iinclude or -Iapp/include instead of -I.
 #
-COMMON_CFLAGS=(
+CFLAGS_STD_MACROS_INCLUDE=(
   -std=c11
+  # -D_GNU_SOURCE
   -D_POSIX_C_SOURCE=200809L
-#  -D_GNU_SOURCE
   -I.
 )
 
@@ -149,7 +150,7 @@ COMMON_CFLAGS=(
 # Warning group 1: baseline warnings
 # =============================================================================
 #
-# WARN_BASE
+# CFLAGS_WARN_BASE
 # ---------
 # These are warnings that are almost always sane for a serious C codebase.
 # They are not perfectly silent, but they catch real mistakes frequently.
@@ -158,7 +159,7 @@ COMMON_CFLAGS=(
 # Binary-size cost of all warning flags: none.
 # Compile-time cost: usually tiny, except where explicitly noted.
 #
-WARN_BASE=(
+CFLAGS_WARN_BASE=(
   # -Wall
   #   Enables GCC's common warning set. Despite the name, it does NOT enable all
   #   warnings. It catches many basic mistakes: suspicious control flow,
@@ -176,8 +177,8 @@ WARN_BASE=(
   #   With -std=c11, this helps detect non-standard constructs.
   #
   #   Important: because this file also defines _GNU_SOURCE, system headers and
-  #   your code may intentionally use GNU/POSIX APIs. That is fine. This warning
-  #   mainly helps keep your own language syntax honest.
+  #   the code may intentionally use GNU/POSIX APIs. That is fine. This warning
+  #   mainly helps keep the code language syntax honest.
   -Wpedantic
 
   # -Wformat=2
@@ -193,7 +194,7 @@ WARN_BASE=(
   #   or type depending on context.
   #
   #   Value: excellent for maintainability.
-  #   Cost: no runtime cost; can be noisy in legacy code.
+  #   Cost: no runtime cost;
   -Wshadow
 
   # -Wundef
@@ -217,8 +218,8 @@ WARN_BASE=(
   # -Wstrict-prototypes
   #   Warn about old-style prototypes like:
   #       int f();
-  #   In C, that does NOT mean "function with no parameters". It means
-  #   "function with unspecified parameters".
+  #   That does NOT mean "function with no parameters".
+  #   It means "function with unspecified parameters".
   #
   #   Proper C prototype:
   #       int f(void);
@@ -239,8 +240,58 @@ WARN_BASE=(
 
   # -Wreturn-type
   #   Warn about functions that should return a value but may not.
-  #   Usually included by -Wall, but kept explicit here because it is critical.
+  #   Usually included by -Wall, kept explicit because it is critical.
   -Wreturn-type
+
+  # -Wconversion
+  #   Warn for implicit conversions that may change a value.
+  #
+  #   Examples:
+  #       uint32_t x = some_uint64;
+  #       int i = some_size_t;
+  #       uint8_t b = 300;
+  #
+  #   Value: excellent for serialization, binary formats, UUIDs, file sizes,
+  #   indexes, wire protocols, endian code, and embedded targets.
+  #
+  #   Pain: high. Always need explicit casts at intentional boundaries.
+  -Wconversion
+
+  # -Wduplicated-cond
+  #   Warn about duplicated conditions in if/else chains.
+  #
+  #   Example:
+  #       if (x == 1) { ... }
+  #       else if (x == 1) { ... }
+  -Wduplicated-cond
+
+  # -Wduplicated-branches
+  #   Warn when two branches contain identical code.
+  #
+  #   Sometimes catches copy/paste bugs.
+  #   Sometimes complains about deliberate symmetry.
+  #   Good for test builds.
+  -Wduplicated-branches
+
+  # -Wlogical-op
+  #   Warn about suspicious logical expressions.
+  #
+  #   Example classes: self-comparisons, always-true/false logic, duplicated
+  #   operands. GCC-specific and occasionally noisy.
+  -Wlogical-op
+
+  # -Wnull-dereference
+  #   Warn when GCC can prove a null pointer is dereferenced.
+  #
+  #   More effective with optimization enabled. No runtime cost.
+  -Wnull-dereference
+
+  # -Wsign-conversion
+  #   Warn for implicit conversions that change signedness.
+  #
+  #   This is extremely useful in C because size_t/int mixing is a bug factory.
+  #   It is also noisy until the codebase is disciplined.
+  -Wsign-conversion
 
   # -Wimplicit-fallthrough=5
   #   Warn about switch cases that fall through without an explicit recognized
@@ -255,7 +306,7 @@ WARN_BASE=(
   #   Warn when a switch over an enum does not handle all enum values.
   #
   #   Very useful for finite-state machines and typed status enums.
-  #   Can be noisy if you intentionally use default for many enums.
+  #   Can be noisy if default is intentionally used for many enums.
   -Wswitch-enum
 
   # -Wswitch-default
@@ -272,33 +323,12 @@ WARN_BASE=(
 # Warning group 2: strict value/type/memory warnings
 # =============================================================================
 #
-# WARN_STRICT
+# CFLAGS_WARN_STRICT
 # -----------
-# These warnings are very valuable, but they force discipline. They may require
-# explicit casts, better type choices, and better API design.
+# These warnings are very valuable, but they force discipline.
+# May require explicit casts, better type choices, and better API design.
 #
-WARN_STRICT=(
-  # -Wconversion
-  #   Warn for implicit conversions that may change a value.
-  #
-  #   Examples:
-  #       uint32_t x = some_uint64;
-  #       int i = some_size_t;
-  #       uint8_t b = 300;
-  #
-  #   Value: excellent for serialization, binary formats, UUIDs, file sizes,
-  #   indexes, wire protocols, endian code, and embedded targets.
-  #
-  #   Pain: high. You will need explicit casts at intentional boundaries.
-  -Wconversion
-
-  # -Wsign-conversion
-  #   Warn for implicit conversions that change signedness.
-  #
-  #   This is extremely useful in C because size_t/int mixing is a bug factory.
-  #   It is also noisy until the codebase is disciplined.
-  -Wsign-conversion
-
+CFLAGS_WARN_STRICT=(
   # -Wdouble-promotion
   #   Warn when float is implicitly promoted to double.
   #
@@ -345,7 +375,8 @@ WARN_STRICT=(
   # -Wpointer-arith
   #   Warn about pointer arithmetic on void* or function pointers.
   #
-  #   GNU C allows void* arithmetic as an extension. ISO C does not.
+  #   GNU C allows void* arithmetic as an extension.
+  #   ISO C does not.
   #   Prefer uint8_t* / char* when doing byte addressing.
   -Wpointer-arith
 
@@ -360,7 +391,8 @@ WARN_STRICT=(
   #   Warn about code that may violate strict aliasing rules.
   #
   #   Important when using -O2/-O3 because GCC optimizes assuming strict
-  #   aliasing by default. Many ugly type-punning tricks are undefined behavior.
+  #   aliasing by default.
+  #   Many ugly type-punning tricks are undefined behavior.
   #
   #   Safer type-punning tools:
   #       memcpy
@@ -371,15 +403,16 @@ WARN_STRICT=(
   # -Wvla
   #   Warn on variable-length arrays.
   #
-  #   VLAs can create unpredictable stack usage. For robust systems code, avoid
+  #   VLAs can create unpredictable stack usage.
+  #   For robust systems code, avoid
   #   them unless you have a very explicit reason.
   -Wvla
 
   # -Walloca
   #   Warn on alloca().
   #
-  #   alloca() consumes stack dynamically and is hard to reason about. Avoid in
-  #   robust systems code.
+  #   alloca() consumes stack dynamically and is hard to reason about.
+  #   Avoid in robust systems code.
   -Walloca
 
   # -Wmissing-field-initializers
@@ -395,40 +428,13 @@ WARN_STRICT=(
 # Warning group 3: paranoid / GCC-specific diagnostics
 # =============================================================================
 #
-# WARN_PARANOID
+# CFLAGS_WARN_PARANOID
 # -------------
 # These are useful for serious test builds, but more compiler-version-sensitive
-# and sometimes noisy. They are intentionally kept separate.
+# and sometimes noisy.
+# They are intentionally kept separate.
 #
-WARN_PARANOID=(
-  # -Wduplicated-cond
-  #   Warn about duplicated conditions in if/else chains.
-  #
-  #   Example:
-  #       if (x == 1) { ... }
-  #       else if (x == 1) { ... }
-  -Wduplicated-cond
-
-  # -Wduplicated-branches
-  #   Warn when two branches contain identical code.
-  #
-  #   Sometimes catches copy/paste bugs. Sometimes complains about deliberate
-  #   symmetry. Good for test builds.
-  -Wduplicated-branches
-
-  # -Wlogical-op
-  #   Warn about suspicious logical expressions.
-  #
-  #   Example classes: self-comparisons, always-true/false logic, duplicated
-  #   operands. GCC-specific and occasionally noisy.
-  -Wlogical-op
-
-  # -Wnull-dereference
-  #   Warn when GCC can prove a null pointer is dereferenced.
-  #
-  #   More effective with optimization enabled. No runtime cost.
-  -Wnull-dereference
-
+CFLAGS_WARN_PARANOID=(
   # -Warray-bounds=2
   #   Stronger array bounds diagnostics.
   #
@@ -456,8 +462,8 @@ WARN_PARANOID=(
   # -Walloc-zero
   #   Warn about allocations of size zero.
   #
-  #   malloc(0) is implementation-defined-ish in practical behavior and often
-  #   indicates a missing validation path.
+  #   malloc(0) is implementation-defined-ish in practical behavior.
+  #   Often indicates a missing validation path.
   -Walloc-zero
 
   # -Wsizeof-pointer-memaccess
@@ -817,10 +823,10 @@ OPT_EXTREME=(
 #   Release suitability: no.
 #
 CFLAGS_TEST=(
-  "${COMMON_CFLAGS[@]}"
-  "${WARN_BASE[@]}"
-  "${WARN_STRICT[@]}"
-  "${WARN_PARANOID[@]}"
+  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
+  "${CFLAGS_WARN_BASE[@]}"
+  "${CFLAGS_WARN_STRICT[@]}"
+  "${CFLAGS_WARN_PARANOID[@]}"
   "${GCC_ANALYZER_FLAGS[@]}"
   "${OPT_TEST[@]}"
   "${DEBUGGABILITY_FLAGS[@]}"
@@ -843,10 +849,10 @@ LDFLAGS_TEST=(
 #   Release suitability: no.
 #
 CFLAGS_TSAN=(
-  "${COMMON_CFLAGS[@]}"
-  "${WARN_BASE[@]}"
-  "${WARN_STRICT[@]}"
-  "${WARN_PARANOID[@]}"
+  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
+  "${CFLAGS_WARN_BASE[@]}"
+  "${CFLAGS_WARN_STRICT[@]}"
+  "${CFLAGS_WARN_PARANOID[@]}"
   "${OPT_TEST[@]}"
   "${DEBUGGABILITY_FLAGS[@]}"
   "${SANITIZER_THREAD[@]}"
@@ -874,9 +880,9 @@ LDFLAGS_TSAN=(
 #   Safety: still keeps stack protector and fortify.
 #
 CFLAGS_RELEASE=(
-  "${COMMON_CFLAGS[@]}"
-  "${WARN_BASE[@]}"
-  "${WARN_STRICT[@]}"
+  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
+  "${CFLAGS_WARN_BASE[@]}"
+  "${CFLAGS_WARN_STRICT[@]}"
   "${OPT_RELEASE[@]}"
   "${HARDENING_FLAGS[@]}"
 )
@@ -907,11 +913,11 @@ LDFLAGS_RELEASE=(
 # with the safest release profile.
 #
 CFLAGS_EXTREME=(
-  "${COMMON_CFLAGS[@]}"
+  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
 
   # Keep baseline warnings because they have no runtime cost.
   # Remove even these only if a third-party dependency makes your build noisy.
-  "${WARN_BASE[@]}"
+  "${CFLAGS_WARN_BASE[@]}"
 
   "${OPT_EXTREME[@]}"
 )
@@ -927,9 +933,9 @@ LDFLAGS_EXTREME=(
 # Use when you want easy GDB stepping rather than maximum bug detection.
 #
 CFLAGS_DEBUG=(
-  "${COMMON_CFLAGS[@]}"
-  "${WARN_BASE[@]}"
-  "${WARN_STRICT[@]}"
+  "${CFLAGS_STD_MACROS_INCLUDE[@]}"
+  "${CFLAGS_WARN_BASE[@]}"
+  "${CFLAGS_WARN_STRICT[@]}"
   "${OPT_DEBUG[@]}"
   "${DEBUGGABILITY_FLAGS[@]}"
   -fno-inline
