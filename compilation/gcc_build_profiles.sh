@@ -3,6 +3,11 @@
 # =============================================================================
 # MARK: File Overview
 # gcc_build_profiles.sh
+#
+# author  Roman Horshkov <github.com/RomanHorshkov>
+# date    2026
+# (c) 2026
+#
 # =============================================================================
 #
 # Purpose
@@ -115,6 +120,10 @@
 
 _print_array() {
     local -n arr="$1"
+    if ((${#arr[@]} == 0)); then
+        printf '\n'
+        return 0
+    fi
     printf '%q ' "${arr[@]}"
     printf '\n'
 }
@@ -666,6 +675,44 @@ CFLAGS_HARDENING_FLAGS=(
   #   Extreme-speed choice: may remove with -fno-stack-protector.
   -fstack-protector-strong
 
+  # -fstack-clash-protection
+  #   Protects against stack clash attacks which involves exhausting the stack
+  #   and causing a clash with another memory region, which can lead to code
+  #   execution in some cases.
+  
+  # If the compiler emits code that adjusts the stack pointer by a huge amount at once:
+  # - sub rsp, huge_size
+  # then the program may jump over the guard page without touching it.
+  # That is the “clash”: the stack can collide with another memory mapping.
+  # What -fstack-clash-protection does
+  # It changes stack allocation code so large stack growth happens page by page.
+  # Conceptually, instead of:
+  # - sub rsp, 1048576
+  # the compiler emits something more like:
+  # - loop:
+  # -     sub rsp, 4096
+  # -     touch [rsp]
+  # -     repeat until enough stack allocated
+  # So every memory page is touched while the stack grows.
+  # If there is a guard page, the program hits it and crashes immediately instead
+  # of silently jumping past it.
+
+  # use when:
+  # VLA
+  # alloca()
+  # large local arrays
+  # deep recursion
+  # parser code
+  # decompression code
+  # untrusted input controlling sizes
+  # thread stacks
+  # embedded-ish fixed stack limits
+
+  #   Runtime cost: usually small.
+  #   Binary-size cost: small.
+  #   Security value: good.
+  -fstack-clash-protection
+
   # -D_FORTIFY_SOURCE=3
   #   Enables extra glibc checks for certain libc calls when optimization is on.
   #
@@ -676,16 +723,16 @@ CFLAGS_HARDENING_FLAGS=(
   #   Runtime cost: usually small, sometimes none, occasionally measurable.
   #   Portability: glibc-specific. Level 3 requires sufficiently recent glibc/GCC.
   #
-  #   If your toolchain rejects level 3, use:
+  #   If toolchain rejects level 3, use:
   #       -D_FORTIFY_SOURCE=2
+  -U_FORTIFY_SOURCE
   -D_FORTIFY_SOURCE=3
 
   # -fno-common
   #   Make tentative global definitions behave strictly.
   #
   #   Catches accidental multiple global definitions at link time.
-  #   Modern GCC defaults to -fno-common already, but keeping it explicit makes
-  #   the policy visible.
+  #   Modern GCC defaults to -fno-common already, but keeping it explicit.
   #
   #   Runtime cost: none.
   -fno-common
@@ -696,7 +743,7 @@ CFLAGS_HARDENING_FLAGS=(
 # Debuggability flags
 # =============================================================================
 #
-CFLAGS_DEBUG=(
+CFLAGS_DEBUG_INFO=(
   # -g3
   #   Emit maximum debug information, including macro definitions.
   #
@@ -718,6 +765,15 @@ CFLAGS_DEBUG=(
 # Optimization groups
 # =============================================================================
 #
+CFLAGS_OPT_DEBUG=(
+  # -Og
+  #   Generate machine code optimized for debugging.
+  #
+  #   Good for stepping in GDB. Not the strongest sanitizer choice, not the
+  #   fastest runtime choice.
+  -Og
+)
+
 CFLAGS_OPT_TEST=(
   # -O1
   #   Light optimization.
@@ -730,15 +786,6 @@ CFLAGS_OPT_TEST=(
   #   Runtime: much faster than -O0, slower than -O2/-O3.
   #   Debuggability: still decent with -g3 and frame pointers.
   -O1
-)
-
-CFLAGS_OPT_DEBUG=(
-  # -Og
-  #   Optimize for debugging experience.
-  #
-  #   Good for stepping in GDB. Not the strongest sanitizer choice, not the
-  #   fastest runtime choice.
-  -Og
 )
 
 CFLAGS_OPT_RELEASE=(
@@ -877,7 +924,7 @@ CFLAGS_DEBUG=(
   "${CFLAGS_WARN_BASE[@]}"
   "${CFLAGS_WARN_STRICT[@]}"
   "${CFLAGS_OPT_DEBUG[@]}"
-  "${CFLAGS_DEBUG[@]}"
+  "${CFLAGS_DEBUG_INFO[@]}"
   -fno-inline
   -fstack-protector-strong
 )
@@ -909,7 +956,7 @@ CFLAGS_TEST=(
   "${CFLAGS_WARN_STRICT[@]}"
   "${CFLAGS_WARN_PARANOID[@]}"
   "${CFLAGS_OPT_TEST[@]}"
-  "${CFLAGS_DEBUG[@]}"
+  "${CFLAGS_DEBUG_INFO[@]}"
   "${CFLAGS_SANITIZER_ADDRESS[@]}"
   "${CFLAGS_GCC_ANALYZER[@]}"
   "${CFLAGS_HARDENING_FLAGS[@]}"
@@ -1006,7 +1053,7 @@ CFLAGS_TSAN=(
   "${CFLAGS_WARN_STRICT[@]}"
   "${CFLAGS_WARN_PARANOID[@]}"
   "${CFLAGS_OPT_TEST[@]}"
-  "${CFLAGS_DEBUG[@]}"
+  "${CFLAGS_DEBUG_INFO[@]}"
   "${CFLAGS_SANITIZER_THREAD[@]}"
   -fno-common
 )
