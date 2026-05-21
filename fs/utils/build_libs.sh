@@ -28,13 +28,14 @@ trap cleanup EXIT
 # Determine the directory that contains this script.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Load the shared GCC build-profile definitions from the same directory as this
-# script, so execution does not depend on the user's current working directory.
-source "${SCRIPT_DIR}/gcc_build_profiles.sh"
-
 # Determine the root directory of the project (the parent of the script's directory).
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd -- "$ROOT_DIR"
+
+# Load the canonical GCC build-profile definitions from the shared compilation
+# directory. fs should not keep a divergent local copy of that policy file.
+PROFILE_FILE="${ROOT_DIR}/../compilation/gcc_build_profiles.sh"
+source "${PROFILE_FILE}"
 
 # Create the build directory if it doesn't exist.
 BUILD_DIR="${ROOT_DIR}/build"
@@ -113,8 +114,83 @@ for profile in "${GCC_BUILD_PROFILES[@]}"; do
     print_artifact_report "${profile_build_dir}/libfsutil.a"
 done
 
+# Optional coverage build
+# -----------------------
+# Coverage is deliberately NOT part of the canonical normal-profile loop.
+#
+# Instead, we build one explicit derived variant here:
+#   release_cov
+#
+# That keeps the main profile lineup stable while still making coverage
+# instrumentation available as a deliberate extra. Tests can then discover
+# release_cov exactly like any other built library directory.
+#
+# We require both:
+#   - gcov   : the underlying GCC coverage toolchain support;
+#   - gcovr  : the reporting tool used later by the test runner.
+#
+# If either tool is missing, we skip the coverage variant cleanly.
+if command -v gcov >/dev/null 2>&1 && command -v gcovr >/dev/null 2>&1; then
+    coverage_profile="release_cov"
+    coverage_build_dir="${BUILD_DIR}/${coverage_profile}"
+
+    # Start from the normal release policy, then layer coverage
+    # instrumentation on top of it.
+    coverage_cppflags=(
+      "${CPPFLAGS_RELEASE[@]}"
+    )
+
+    coverage_cflags=(
+      "${CFLAGS_RELEASE[@]}"
+      "${CFLAGS_INSTRUMENT_COVERAGE[@]}"
+    )
+
+    coverage_ldflags=(
+      "${LDFLAGS_RELEASE[@]}"
+      "${LDFLAGS_INSTRUMENT_COVERAGE[@]}"
+    )
+
+    mkdir -p "${coverage_build_dir}"
+
+    printf '\n[%s]\n' "${coverage_profile}"
+    printf '  base profile:             release\n'
+    printf '  extra instrumentation:    --coverage\n'
+    printf '  compiling PIC object:     %s\n' "${coverage_build_dir}/fsutil.pic.o"
+
+    gcc "${coverage_cppflags[@]}" "${coverage_cflags[@]}" -fPIC -c fsutil.c \
+        -o "${coverage_build_dir}/fsutil.pic.o"
+
+    printf '  compiling static object:  %s\n' "${coverage_build_dir}/fsutil.o"
+
+    gcc "${coverage_cppflags[@]}" "${coverage_cflags[@]}" -c fsutil.c \
+        -o "${coverage_build_dir}/fsutil.o"
+
+    printf '  linking shared library:   %s\n' "${coverage_build_dir}/libfsutil.so"
+
+    gcc -shared "${coverage_ldflags[@]}" \
+        -o "${coverage_build_dir}/libfsutil.so" \
+        "${coverage_build_dir}/fsutil.pic.o"
+
+    printf '  creating static library:  %s\n' "${coverage_build_dir}/libfsutil.a"
+
+    ar rcs "${coverage_build_dir}/libfsutil.a" \
+        "${coverage_build_dir}/fsutil.o"
+
+    printf '  output summary:\n'
+    print_artifact_report "${coverage_build_dir}/libfsutil.so"
+    print_artifact_report "${coverage_build_dir}/libfsutil.a"
+else
+    printf '\n[release_cov]\n'
+    printf '  skipped: gcov and/or gcovr not found\n'
+fi
+
 printf 'artifacts:\n'
 for profile in "${GCC_BUILD_PROFILES[@]}"; do
     printf '  %s\n' "${BUILD_DIR}/${profile}/libfsutil.a"
     printf '  %s\n' "${BUILD_DIR}/${profile}/libfsutil.so"
 done
+
+if [[ -f "${BUILD_DIR}/release_cov/libfsutil.a" ]]; then
+    printf '  %s\n' "${BUILD_DIR}/release_cov/libfsutil.a"
+    printf '  %s\n' "${BUILD_DIR}/release_cov/libfsutil.so"
+fi

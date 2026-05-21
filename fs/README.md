@@ -47,37 +47,75 @@ Builds are driven by scripts under `utils/`.
 Build static and shared libraries:
 
 ```sh
-./utils/make_libs.sh
+./utils/build_libs.sh
 ```
 
 Artifacts:
 
-- `build/libfsutil.a`
-- `build/libfsutil.so`
+- `build/<profile>/libfsutil.a`
+- `build/<profile>/libfsutil.so`
+- optional coverage variant: `build/release_cov/libfsutil.a`
+- optional coverage variant: `build/release_cov/libfsutil.so`
 
 ## Testing
 
-The integration suite uses `cmocka` and produces coverage reports with
-`gcovr`.
+The integration suite uses `cmocka`.
+
+The workflow is intentionally split into stages:
+
+1. build the libraries
+2. build the test executables against the already-built libraries
+3. run whatever built test executables are present
 
 Requirements on Debian/Ubuntu:
 
 ```sh
-sudo apt install libcmocka-dev gcovr
+sudo apt install libcmocka-dev
 ```
 
-Run:
+Optional coverage reports:
 
 ```sh
-./utils/make_ITs.sh
+sudo apt install gcovr
+```
+
+Sequence:
+
+```sh
+./utils/build_libs.sh
+./utils/build_ITs.sh
+./utils/run_ITs.sh
+```
+
+Build test executables:
+
+```sh
+./utils/build_ITs.sh
+```
+
+Run discovered test executables:
+
+```sh
+./utils/run_ITs.sh
 ```
 
 Outputs:
 
 - `tests/results/ITs/integration_result.txt`
+- `tests/results/ITs/<profile>/integration_test.shared.txt`
+- `tests/results/ITs/<profile>/integration_test.static.txt`
+
+Coverage outputs, when coverage artifacts are present:
+
 - `tests/results/ITs/ITs_all_coverage.html`
 - `tests/results/ITs/ITs_all_coverage.xml`
 - `tests/results/ITs/coverage-summary.json`
+
+Coverage note:
+
+- coverage reports are generated only if a coverage-instrumented library build
+  exists and the tests were run against it
+- `build_libs.sh` can build `release_cov` when `gcov` and `gcovr` are available
 
 ## API notes
 

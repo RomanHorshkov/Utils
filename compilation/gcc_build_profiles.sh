@@ -769,6 +769,59 @@ LDFLAGS_SANITIZER_THREAD=(
 )
 
 # =============================================================================
+# MARK: Coverage Instrumentation
+# Optional coverage instrumentation
+# =============================================================================
+#
+# Coverage instrumentation is kept separate from the main profile lineup on
+# purpose. It is not a "normal build profile" by itself. Instead, it is a
+# composable extra that can be layered on top of another build when you
+# explicitly want coverage data.
+#
+# Typical use:
+#
+#   - start from a base profile that represents the behavior you care about;
+#   - add coverage instrumentation;
+#   - build a derived variant such as release_cov.
+#
+# This keeps the reusable profile lineup clean while still making coverage
+# support available to build scripts.
+#
+# CFLAGS_INSTRUMENT_COVERAGE / LDFLAGS_INSTRUMENT_COVERAGE
+# --------------------------------------------------------
+# --coverage is GCC's convenience switch for gcov-style instrumentation.
+#
+# In practice it enables the compile/link support needed to produce:
+#   - .gcno files at build time;
+#   - .gcda files when the instrumented code actually runs.
+#
+# Important:
+#   - instrumentation must be present when compiling the code you want covered;
+#   - link with --coverage as well so the gcov runtime support is included;
+#   - coverage is usually meaningful on a debug-ish or release-ish build you
+#     intentionally chose, not as a permanent always-on default.
+#
+# Runtime cost: noticeable.
+# Binary-size cost: higher.
+# Build-artifact side effects: produces .gcno/.gcda files.
+#
+CFLAGS_INSTRUMENT_COVERAGE=(
+  # --coverage
+  #   Enable gcov-compatible coverage instrumentation.
+  #
+  #   This is the flag you will usually want to see in the build script when a
+  #   coverage-specific variant is being produced.
+  --coverage
+)
+
+LDFLAGS_INSTRUMENT_COVERAGE=(
+  # --coverage
+  #   Repeat coverage instrumentation at link time so the gcov runtime support
+  #   is linked into the final executable or shared-library link step.
+  --coverage
+)
+
+# =============================================================================
 # MARK: Hardening
 # Instrumentation / hardening flags
 # =============================================================================
