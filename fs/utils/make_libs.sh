@@ -9,6 +9,15 @@
 # -o pipefail: fail a pipeline if any command in the pipeline fails.
 set -euo pipefail
 
+# Print a short, human-meaningful description of a produced artifact.
+print_artifact_report() {
+    local artifact_path="$1"
+
+    printf '    artifact: %s\n' "${artifact_path}"
+    printf '      size:   %s bytes\n' "$(wc -c < "${artifact_path}")"
+    printf '      type:   %s\n' "$(file -b "${artifact_path}")"
+}
+
 # Remember where the user launched the script.
 START_DIR="$(pwd -P)"
 # Return to the user's launch directory.
@@ -16,73 +25,96 @@ cleanup() { cd -- "$START_DIR"; }
 # Always return to START_DIR on script exit.
 trap cleanup EXIT
 
+# Determine the directory that contains this script.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load the shared GCC build-profile definitions from the same directory as this
+# script, so execution does not depend on the user's current working directory.
+source "${SCRIPT_DIR}/gcc_build_profiles.sh"
+
 # Determine the root directory of the project (the parent of the script's directory).
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd -- "$ROOT_DIR"
 
 # Create the build directory if it doesn't exist.
 BUILD_DIR="${ROOT_DIR}/build"
 mkdir -p "${BUILD_DIR}"
 
-# Compiler warning flags to enforce code quality.
-WARN_FLAGS=(
-  # Treat all warnings as errors.
-  -Werror
-  # Enable common warnings about code quality and potential issues.
-  -Wall
-  # Enable extra warnings that are not included in -Wall.
-  -Wextra
-  # Enable warnings about language extensions and non-standard code.
-  -Wpedantic
-  # Enable warnings about shadowing variables, which can lead to confusing code.
-  -Wshadow
-  # Enable warnings about format string vulnerabilities and mismatches, 2 to treat them as errors.
-  -Wformat=2
-  # Enable warnings about implicit conversions that may change the value, such as signed to unsigned.
-  -Wconversion
-  # Enable warnings about null pointer dereferences, which can lead to crashes.
-  -Wnull-dereference
-  # Enable warnings about implicit fallthrough in switch statements, which can lead to bugs.
-  -Wimplicit-fallthrough=5
-  # Enable warnings about double promotion of float to double, which can lead to performance issues.
-  -Wdouble-promotion
-  # Enable warnings about duplicated conditions in if statements, which can indicate logic errors.
-  -Wduplicated-cond
-  # Enable warnings about duplicated branches in if statements, which can indicate logic errors.
-  -Wduplicated-branches
-  # Enable warnings about logical operations that are always true or false, which can indicate logic errors.
-  -Wlogical-op
-  # Enable warnings about missing field initializers in struct initialization, which can lead to uninitialized fields.
-  -Wmissing-field-initializers
-  # Enable warnings about missing prototypes for functions, which can lead to implicit declarations and potential bugs.
-  -Wmissing-prototypes
-  # Enable warnings about missing declarations for functions, which can lead to implicit declarations and potential bugs.
-  -Wmissing-declarations
-)
-
-CFLAGS=(
-  # Use the C11 standard and enable GNU extensions.
-  -std=c11
-  # Define _GNU_SOURCE to enable GNU extensions in the C library.
-  -D_GNU_SOURCE
-  # Optimization level 2 for better performance without sacrificing too much compile time.
-  -O2
-  # Include debug symbols for easier debugging and profiling.
-  -g
-  # Include the current directory for header files.
-  -I.
-  # Include the warning flags defined above.
-  "${WARN_FLAGS[@]}"
-)
-
 printf 'building fsutil libraries in %s\n' "${BUILD_DIR}"
 
-gcc "${CFLAGS[@]}" -fPIC -c fsutil.c -o "${BUILD_DIR}/fsutil.pic.o"
-gcc "${CFLAGS[@]}"       -c fsutil.c -o "${BUILD_DIR}/fsutil.o"
 
-gcc -shared -o "${BUILD_DIR}/libfsutil.so" "${BUILD_DIR}/fsutil.pic.o"
-ar rcs "${BUILD_DIR}/libfsutil.a" "${BUILD_DIR}/fsutil.o"
+# Build both library variants for every profile exported by the shared GCC
+# profile configuration.
+#
+# The profile file gives us names such as:
+#   - debug
+#   - release
+#   - native
+#
+# For each profile we create:
+#   - build/<profile>/libfsutil.a
+#   - build/<profile>/libfsutil.so
+#
+# The profile arrays follow a predictable naming convention:
+#   CPPFLAGS_DEBUG   CFLAGS_DEBUG   LDFLAGS_DEBUG
+#   CPPFLAGS_RELEASE CFLAGS_RELEASE LDFLAGS_RELEASE
+#   ...
+#
+# The loop below converts the lowercase profile name into uppercase, rebuilds
+# those array names as strings, and then uses Bash namerefs so gcc receives the
+# correct arrays for the current profile.
+
+for profile in "${GCC_BUILD_PROFILES[@]}"; do
+    profile_upper="${profile^^}"
+    profile_build_dir="${BUILD_DIR}/${profile}"
+
+    cppflags_var="CPPFLAGS_${profile_upper}"
+    cflags_var="CFLAGS_${profile_upper}"
+    ldflags_var="LDFLAGS_${profile_upper}"
+
+    declare -n cppflags_ref="${cppflags_var}"
+    declare -n cflags_ref="${cflags_var}"
+    declare -n ldflags_ref="${ldflags_var}"
+
+    # Keep each profile's artifacts in its own directory so builds do not
+    # overwrite one another and inspection stays simple.
+    mkdir -p "${profile_build_dir}"
+
+    printf '\n[%s]\n' "${profile}"
+    printf '  compiling PIC object:    %s\n' "${profile_build_dir}/fsutil.pic.o"
+
+    # Position-independent object for the shared library.
+    gcc "${cppflags_ref[@]}" "${cflags_ref[@]}" -fPIC -c fsutil.c \
+        -o "${profile_build_dir}/fsutil.pic.o"
+
+    printf '  compiling static object: %s\n' "${profile_build_dir}/fsutil.o"
+
+    # Normal object for the static library.
+    gcc "${cppflags_ref[@]}" "${cflags_ref[@]}" -c fsutil.c \
+        -o "${profile_build_dir}/fsutil.o"
+
+    printf '  linking shared library:  %s\n' "${profile_build_dir}/libfsutil.so"
+
+    # Shared library (.so): link the PIC object and apply the profile's link
+    # flags, which matters for profiles such as sanitize, native, and tsan.
+    gcc -shared "${ldflags_ref[@]}" \
+        -o "${profile_build_dir}/libfsutil.so" \
+        "${profile_build_dir}/fsutil.pic.o"
+
+    printf '  creating static library: %s\n' "${profile_build_dir}/libfsutil.a"
+
+    # Static library (.a): archive the non-PIC object.
+    ar rcs "${profile_build_dir}/libfsutil.a" \
+        "${profile_build_dir}/fsutil.o"
+
+    # Report what was actually produced, not just that the commands ran.
+    printf '  output summary:\n'
+    print_artifact_report "${profile_build_dir}/libfsutil.so"
+    print_artifact_report "${profile_build_dir}/libfsutil.a"
+done
 
 printf 'artifacts:\n'
-printf '  %s\n' "${BUILD_DIR}/libfsutil.a"
-printf '  %s\n' "${BUILD_DIR}/libfsutil.so"
+for profile in "${GCC_BUILD_PROFILES[@]}"; do
+    printf '  %s\n' "${BUILD_DIR}/${profile}/libfsutil.a"
+    printf '  %s\n' "${BUILD_DIR}/${profile}/libfsutil.so"
+done
