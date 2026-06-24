@@ -162,6 +162,16 @@ extern "C"
  ****************************************************************************
  */
 
+
+/**
+ * @def STRING_IS_NULL_OR_EMPTY(s)
+ * @brief Check if a C string is null or empty.
+ * 
+ * @param s Pointer to a null-terminated C string.
+ * @return Non-zero if the string is null or empty, zero otherwise.
+ */
+#define STRING_IS_NULL_OR_EMPTY(s) ((!s) || !*(s))
+
 /**
  * @def CAT(a, b)
  * @brief Concatenate two preprocessor tokens into a single token.
