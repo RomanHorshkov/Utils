@@ -41,11 +41,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 /****************************************************************************
  * MARK: COMPILATION FEATURES
  ****************************************************************************
@@ -224,7 +219,4 @@ extern "C"
  */
 #define ENUM_ITEM_STANDARD(_prefix, _suffix) ENUM_ID(_prefix, _suffix),
 
-#ifdef __cplusplus
-}
-#endif
 #endif /* PREPROCESSOR_COMMON_H */
