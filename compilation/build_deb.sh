@@ -57,6 +57,9 @@ STAGE_ROOT="${BUILD_DIR}/pkgroot"
 
 rm -rf -- "${STAGE_ROOT}"
 mkdir -p -- "${OUT_DIR}"
+# Clear previously produced debs so a stale package (notably the retired
+# monolithic rh-utils_*.deb) can't linger and get picked up at install time.
+rm -f -- "${OUT_DIR}"/*.deb
 
 # _emit_deb <pkg> <description-one-line> <staged-root-dir>
 # Writes DEBIAN/control into the staged root and builds the .deb.
