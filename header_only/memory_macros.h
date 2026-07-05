@@ -4,11 +4,11 @@
  *
  * This header centralizes small, constexpr-style macros that convert units
  * such as kibibytes and mebibytes to byte counts expressed as `size_t`.
- * 
+ *
  * @author  Roman Horshkov <github.com/RomanHorshkov>
  * @date    may 2026
  * (c) 2026
- * 
+ *
  */
 
 #ifndef MEMORY_UNIT_MACROS_H_
