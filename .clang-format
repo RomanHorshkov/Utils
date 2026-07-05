@@ -53,7 +53,7 @@ AlignConsecutiveMacros:
   AcrossComments: true
 
 # Comment handling
-ReflowComments: false          # Do not reflow or rewrap block comments
+ReflowComments: true           # Reflow block comments to the configured column limit
 CommentPragmas: '^(NOLINT|NOCFMT)'  # Don't reflow comments matching these pragmas
 
 # Extra: Balance readability with control and standards compliance
