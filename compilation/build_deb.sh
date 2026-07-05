@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
 # =============================================================================
-# build_deb.sh — package the rh-utils foundation deb (Architecture: all)
+# build_deb.sh — package the rh header-only utilities as SEPARATE debs
 #
 # author  Roman Horshkov <github.com/RomanHorshkov>
 #
-# Payload (see superproject IMPLEMENTATION_PROCEDURE.md §4.3, order 1):
-#   /usr/local/include/utils/*.h            header-only libraries
-#   /usr/local/include/utils/VERSION        version marker for humans/tools
-#   /usr/local/share/rh-utils/gcc_build_profiles.sh
-#   /usr/local/share/rh-utils/.clang-format
-#   /usr/local/share/rh-utils/VERSION
-#   /usr/local/share/rh-utils/testkit/**    superproject tests/ toolkit,
-#                                           staged only when present (§4.5)
+# One Debian package per header (Architecture: all), each shipping exactly one
+# .h to /usr/local/include/utils/, plus one devtools package for the shared
+# build tooling. This lets a consumer depend on only what it includes, and
+# lets each header version independently.
 #
-# After install every repo consumes:  #include <utils/string_view.h>  etc.
-# and syncs its gcc_build_profiles.sh from /usr/local/share/rh-utils/.
+#   header_only/string_view.h          -> rh-util-string-view
+#   header_only/memory_macros.h        -> rh-util-memory-macros
+#   header_only/time_macros.h          -> rh-util-time-macros
+#   header_only/preprocessor_macros.h  -> rh-util-preprocessor-macros
+#     each installs  /usr/local/include/utils/<name>.h
+#     consumed as    #include <utils/<name>.h>     (flat, unchanged)
+#
+#   compilation/gcc_build_profiles.sh  ┐
+#   .clang-format                      ├─ rh-utils-devtools
+#   ../tests/  (superproject testkit)  ┘   -> /usr/local/share/rh-utils/
+#
+# Every produced .deb lands in build/debs/. See Utils/README.md and the
+# superproject IMPLEMENTATION_PROCEDURE.md §4.3.
 # =============================================================================
 
 set -euo pipefail
@@ -32,82 +39,97 @@ cd -- "${ROOT_DIR}"
 command -v dpkg-deb >/dev/null 2>&1 || die "dpkg-deb not found in PATH"
 command -v fakeroot >/dev/null 2>&1 || die "fakeroot not found in PATH"
 
-PKG_NAME="rh-utils"
 VER="$(tr -d '[:space:]' < "${ROOT_DIR}/VERSION")"
 [[ -n "${VER}" ]] || die "VERSION is empty"
-ARCH="all"
 
 HEADERS_DIR="${ROOT_DIR}/header_only"
 PROFILES_SH="${ROOT_DIR}/compilation/gcc_build_profiles.sh"
 CLANG_FMT="${ROOT_DIR}/.clang-format"
-# Superproject tests/ toolkit (§4.5) — optional until it exists.
 TESTKIT_DIR="${TESTKIT_DIR:-$(cd "${ROOT_DIR}/.." 2>/dev/null && pwd)/tests}"
 
 [[ -d "${HEADERS_DIR}" ]] || die "missing ${HEADERS_DIR}"
 [[ -f "${PROFILES_SH}" ]] || die "missing ${PROFILES_SH}"
 [[ -f "${CLANG_FMT}"   ]] || die "missing ${CLANG_FMT}"
 
-STAGE="${ROOT_DIR}/build/pkgroot"
-OUT_DIR="${OUT_DIR:-${ROOT_DIR}/build/debs}"
-DEB="${OUT_DIR}/${PKG_NAME}_${VER}_${ARCH}.deb"
+BUILD_DIR="${ROOT_DIR}/build"
+OUT_DIR="${OUT_DIR:-${BUILD_DIR}/debs}"
+STAGE_ROOT="${BUILD_DIR}/pkgroot"
 
-rm -rf -- "${STAGE}"
-mkdir -p -- "${STAGE}/DEBIAN" \
-            "${STAGE}/usr/local/include/utils" \
-            "${STAGE}/usr/local/share/rh-utils"
+rm -rf -- "${STAGE_ROOT}"
+mkdir -p -- "${OUT_DIR}"
 
-# --- headers -----------------------------------------------------------------
+# _emit_deb <pkg> <description-one-line> <staged-root-dir>
+# Writes DEBIAN/control into the staged root and builds the .deb.
+_emit_deb() {
+    local pkg="$1" desc="$2" stage="$3"
+    mkdir -p -- "${stage}/DEBIAN"
+    # Replaces/Conflicts the retired monolithic rh-utils: on any box that still
+    # has it, apt removes it and these split packages take over its files
+    # (each header used to be shipped by rh-utils).
+    cat > "${stage}/DEBIAN/control" <<EOF
+Package: ${pkg}
+Version: ${VER}
+Section: libdevel
+Priority: optional
+Architecture: all
+Maintainer: Roman Horshkov <https://github.com/RomanHorshkov>
+Replaces: rh-utils
+Conflicts: rh-utils
+Description: ${desc}
+EOF
+    local deb="${OUT_DIR}/${pkg}_${VER}_all.deb"
+    fakeroot dpkg-deb --build "${stage}" "${deb}" >/dev/null
+    printf '  built  %s\n' "$(basename "${deb}")"
+}
+
+# header_slug <memory_macros> -> memory-macros  (package-name friendly)
+_header_slug() { printf '%s' "${1//_/-}"; }
+
+printf 'Utils: packaging header-only utilities (version %s)\n' "${VER}"
+
+# --- one deb per header ------------------------------------------------------
 shopt -s nullglob
 headers=("${HEADERS_DIR}"/*.h)
 shopt -u nullglob
 (( ${#headers[@]} > 0 )) || die "no headers found in ${HEADERS_DIR}"
+
 for h in "${headers[@]}"
 do
-    install -m 0644 -- "${h}" "${STAGE}/usr/local/include/utils/$(basename "${h}")"
-    printf '  header  %s\n' "$(basename "${h}")"
+    base="$(basename "${h}")"           # memory_macros.h
+    name="${base%.h}"                   # memory_macros
+    slug="$(_header_slug "${name}")"    # memory-macros
+    pkg="rh-util-${slug}"
+
+    stage="${STAGE_ROOT}/${pkg}"
+    rm -rf -- "${stage}"
+    mkdir -p -- "${stage}/usr/local/include/utils"
+    install -m 0644 -- "${h}" "${stage}/usr/local/include/utils/${base}"
+
+    _emit_deb "${pkg}" "rh header-only utility: <utils/${base}> (installs one header under /usr/local/include/utils)" "${stage}"
 done
-printf '%s\n' "${VER}" > "${STAGE}/usr/local/include/utils/VERSION"
-chmod 0644 "${STAGE}/usr/local/include/utils/VERSION"
 
-# --- shared assets -------------------------------------------------------------
-install -m 0644 -- "${PROFILES_SH}" "${STAGE}/usr/local/share/rh-utils/gcc_build_profiles.sh"
-install -m 0644 -- "${CLANG_FMT}"   "${STAGE}/usr/local/share/rh-utils/.clang-format"
-printf '%s\n' "${VER}" > "${STAGE}/usr/local/share/rh-utils/VERSION"
-chmod 0644 "${STAGE}/usr/local/share/rh-utils/VERSION"
+# --- devtools: build profiles, clang-format, shared testkit ------------------
+dt="${STAGE_ROOT}/rh-utils-devtools"
+rm -rf -- "${dt}"
+mkdir -p -- "${dt}/usr/local/share/rh-utils"
+install -m 0644 -- "${PROFILES_SH}" "${dt}/usr/local/share/rh-utils/gcc_build_profiles.sh"
+install -m 0644 -- "${CLANG_FMT}"   "${dt}/usr/local/share/rh-utils/.clang-format"
+printf '%s\n' "${VER}" > "${dt}/usr/local/share/rh-utils/VERSION"
+chmod 0644 "${dt}/usr/local/share/rh-utils/VERSION"
 
-# --- testkit (optional until superproject tests/ lands, §4.5) -----------------
 if [[ -d "${TESTKIT_DIR}" ]]
 then
     printf '  testkit %s -> /usr/local/share/rh-utils/testkit/\n' "${TESTKIT_DIR}"
-    mkdir -p -- "${STAGE}/usr/local/share/rh-utils/testkit"
-    cp -a -- "${TESTKIT_DIR}/." "${STAGE}/usr/local/share/rh-utils/testkit/"
-    find "${STAGE}/usr/local/share/rh-utils/testkit" -type d -exec chmod 0755 {} +
-    find "${STAGE}/usr/local/share/rh-utils/testkit" -type f -name '*.sh' -exec chmod 0755 {} +
-    find "${STAGE}/usr/local/share/rh-utils/testkit" -type f ! -name '*.sh' -exec chmod 0644 {} +
+    mkdir -p -- "${dt}/usr/local/share/rh-utils/testkit"
+    cp -a -- "${TESTKIT_DIR}/." "${dt}/usr/local/share/rh-utils/testkit/"
+    find "${dt}/usr/local/share/rh-utils/testkit" -type d -exec chmod 0755 {} +
+    find "${dt}/usr/local/share/rh-utils/testkit" -type f -name '*.sh' -exec chmod 0755 {} +
+    find "${dt}/usr/local/share/rh-utils/testkit" -type f ! -name '*.sh' -exec chmod 0644 {} +
 else
-    printf 'build_deb: NOTE superproject testkit not found at %s — packaging without it\n' "${TESTKIT_DIR}"
+    printf 'build_deb: NOTE superproject testkit not found at %s — devtools packaged without it\n' "${TESTKIT_DIR}"
 fi
 
-# --- control -------------------------------------------------------------------
-cat > "${STAGE}/DEBIAN/control" <<EOF
-Package: ${PKG_NAME}
-Version: ${VER}
-Section: utils
-Priority: optional
-Architecture: ${ARCH}
-Maintainer: Roman Horshkov <https://github.com/RomanHorshkov>
-Description: rh header-only C utilities and canonical build tooling
- Header-only libraries (string_view, memory/time/preprocessor macros)
- installed under /usr/local/include/utils, plus the canonical
- gcc_build_profiles.sh, .clang-format and shared test toolkit under
- /usr/local/share/rh-utils.
-EOF
+_emit_deb "rh-utils-devtools" "rh build tooling: gcc_build_profiles.sh, .clang-format, shared testkit under /usr/local/share/rh-utils" "${dt}"
 
-# Header-only + assets: no ldconfig hooks needed.
-
-mkdir -p -- "${OUT_DIR}"
-fakeroot dpkg-deb --build "${STAGE}" "${DEB}"
-
-printf '\nbuilt: %s\n' "${DEB}"
-dpkg-deb -I "${DEB}"
-dpkg-deb -c "${DEB}"
+printf '\nUtils: %d package(s) in %s\n' "$(( ${#headers[@]} + 1 ))" "${OUT_DIR}"
+ls -1 "${OUT_DIR}"/rh-util*_"${VER}"_all.deb 2>/dev/null | sed 's|^|  |'
