@@ -7,7 +7,7 @@
                                      │  Preprocessing
                                      │
                                      │  CPPFLAGS
-                                     │    
+                                     │
                                      │    -I include/path
                                      │    -D MACRO=value
                                      │    -U MACRO
@@ -20,7 +20,7 @@
                                      │  Compilation
                                      │
                                      │  CFLAGS
-                                     │    
+                                     │
                                      │    -std=c17
                                      │    -Wall -Wextra
                                      │    -O0 / -O2 / -O3
@@ -37,7 +37,7 @@
                                      │  Assembly
                                      │
                                      │  ASFLAGS
-                                     │    
+                                     │
                                      │    assembler-specific flags
                                      │
                                      ▼
