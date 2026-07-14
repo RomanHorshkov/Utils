@@ -5,7 +5,7 @@
  * Provides a lightweight string view structure for non-owning
  * references to character data.
  *
- * @author  Roman Horshkov <roman.horshkov@gmail.com>
+ * @author  Roman Horshkov <124358264+RomanHorshkov@users.noreply.github.com>
  * @date    2025
  * (c) 2025
  */
